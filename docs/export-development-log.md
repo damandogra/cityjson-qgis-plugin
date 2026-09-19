@@ -5,6 +5,20 @@ gets one entry at PR time). Keep entries short — what changed, why, what's blo
 
 ---
 
+## 2026-09-09 — Phase 1 done (C0.2, C1.1, C1.2, C1.3)
+
+- Synced with upstream (now at v1.0.1). Merged writter + develop into
+  cityjson-export, no conflicts.
+- Built the fixture in tests/test_export.py: two Buildings, MultiSurface
+  cubes, 16 quantized vertices, scale 0.001. Imports as 1 layer / 2 features.
+- Round-trip test written and failing on purpose:
+  ModuleNotFoundError: No module named 'core.exporting'. Committed red.
+- API now pinned by its first caller: CityJSONExporter(layers, citymodel=...)
+  .export() -> dict, and save_cityjson_model(dict, path).
+
+Next: C2.1, the vertices writer — inverse of VerticesCache.
+
+
 ## 2026-08-13
 
 Branch: `cityjson-writter-copy`
