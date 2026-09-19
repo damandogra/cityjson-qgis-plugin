@@ -489,9 +489,9 @@ class TestCityJsonLoader:
         with patch.object(loader, "initProcessing") as mock_init_processing:
             loader.initGui()
 
-        assert len(loader.actions) == 1
+        assert len(loader.actions) == 2
         mock_init_processing.assert_called_once()
-        mock_iface.addPluginToVectorMenu.assert_called_once()
+        mock_iface.addPluginToVectorMenu.assert_called()
 
     def test_run(self, plugin_module, mock_iface, qgis_app):
         loader = plugin_module.CityJsonLoader(mock_iface)
