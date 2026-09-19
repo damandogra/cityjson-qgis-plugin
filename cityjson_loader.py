@@ -408,8 +408,8 @@ class CityJsonLoader:
     def initGui(self) -> None:
         """Create the menu entries and toolbar icons inside the QGIS GUI"""
 
-        load_icon_path = ":/plugins/cityjson_loader/cityjson_logo_load.svg"
-        export_icon_path = ":/plugins/cityjson_loader/cityjson_logo_export.svg"
+        load_icon_path = os.path.join(self.plugin_dir, "cityjson_logo_load.svg")
+        export_icon_path = os.path.join(self.plugin_dir, "cityjson_logo_export.svg")
 
         self.add_action(
             load_icon_path,
