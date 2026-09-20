@@ -5,6 +5,34 @@ gets one entry at PR time). Keep entries short — what changed, why, what's blo
 
 ---
 
+## 2026-09-20 — X3 done, round-trip green
+
+- export() builds the subset: createCityJSON, copy version/transform, copy
+  surviving CityObjects, then process_geometry / process_templates /
+  process_appearance, then metadata. Mirrors get_subset_cotype.
+- Guarded process_templates behind "geometry-templates" in citymodel, and
+  dropped the empty `subset_cm["appearance"] = {}` line — process_appearance
+  uses setdefault. Both are deliberate divergences from get_subset_cotype.
+- prune_dangling_children: filters each surviving object's "children" down to
+  surviving ids, deletes the key when empty. Only children — get_surviving_ids
+  already resurrects parents, so a parents filter is dead code today.
+- First round-trip assertion (only checked CityObjects keys) passed with
+  vertices == []. Added `len(output["vertices"]) == 8` to make the test
+  actually prove something.
+- 256 passed.
+
+Open gaps found while building this:
+- deepcopy (X4) is now more urgent: prune deletes keys from CityObject dicts
+  shared with self.citymodel, so export mutates the live model's structure,
+  not just its indices.
+- Parent resurrection in get_surviving_ids is one level deep — it loops a
+  snapshot (`list(uids)`), so a resurrected parent's own parents are never
+  walked. Building -> BuildingPart -> BuildingInstallation leaves a dangling
+  "parents" ref. Fix transitively, or add the parents filter as a net.
+- process_templates does j2["CityObjects"][each]["geometry"] with no .get() —
+  KeyError on a CityObject with no geometry, which the spec allows.
+
+
 ## 2026-09-09 — Phase 1 done (C0.2, C1.1, C1.2, C1.3)
 
 - Synced with upstream (now at v1.0.1). Merged writter + develop into
