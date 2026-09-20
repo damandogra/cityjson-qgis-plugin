@@ -1,5 +1,7 @@
 """Writes QGIS layers back out as CityJSON."""
 
+import json
+
 class CityJSONExporter:
     """Rebuilds a CityJSON model from QGIS layers."""
 
@@ -12,7 +14,7 @@ class CityJSONExporter:
         # Approach 1 - ignore the original, rebuild from the table.
             # read self.layers, build vertices + CityObjects from scratch
             # self.citymodel only used for transform / version / metadata
-        # Approach 2 (patch) - start from the original, change only what differs."""
+        # Approach 2 (patch) - start from the original, change only what differs.
             # copy self.citymodel
             # diff self.layers against it
             # apply only the deletions / geometry edits / attribute edits
@@ -22,4 +24,6 @@ class CityJSONExporter:
 
 def save_cityjson_model(citymodel: dict, filepath: str) -> None:
     """Save a CityJSON model dictionary to a file."""
-    raise NotImplementedError
+    with open(filepath, "w", encoding="utf-8", buffering=8192) as fstream:
+        content=(json.dumps(citymodel))
+        fstream.write(content)

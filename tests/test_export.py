@@ -4,6 +4,7 @@ import shutil
 import tempfile
 
 from core.loading import CityJSONLoader, load_cityjson_model
+from core.exporting import CityJSONExporter, save_cityjson_model
 
 def _cube_vertices(dx):
     """Eight cube corners, shifted dx along x"""
@@ -34,12 +35,9 @@ def _cube_geometry(first_vertex):
         ],
     }
 
-
-
-def test_fixture_writes_and_reads_back():
-    temp_dir = tempfile.mkdtemp()   # a throwaway directory somewhere in the container's /tmp
-
-    citymodel = {
+def _two_cubes_citymodel():
+    """A CityJSON model with two cubes, one shifted along x"""
+    return {
         "type": "CityJSON",
         "version": "2.0",
         "transform": {"scale": [0.001, 0.001, 0.001], "translate": [0.0, 0.0, 0.0]},
@@ -58,9 +56,14 @@ def test_fixture_writes_and_reads_back():
         },
     }
 
+
+
+def test_fixture_writes_and_reads_back():
+    temp_dir = tempfile.mkdtemp()   # a throwaway directory somewhere in the container's /tmp
+
     file_path = os.path.join(temp_dir, "input.city.json")
     with open(file_path, "w", encoding="utf-8") as f:
-        json.dump(citymodel, f)     # dict → real .json file on disk
+        json.dump(_two_cubes_citymodel(), f)     # dict → real .json file on disk
 
     result = load_cityjson_model(file_path)  # file on disk -> dict
 
@@ -77,33 +80,12 @@ def test_fixture_writes_and_reads_back():
 
     shutil.rmtree(temp_dir)     # delete the directory
 
-
-
 def test_round_trip_after_deleting_one_building():
     temp_dir = tempfile.mkdtemp()   # a throwaway directory somewhere in the container's /tmp
 
-    citymodel = {
-        "type": "CityJSON",
-        "version": "2.0",
-        "transform": {"scale": [0.001, 0.001, 0.001], "translate": [0.0, 0.0, 0.0]},
-        "vertices": _cube_vertices(0) + _cube_vertices(1000),  # two cubes, one shifted along x
-        "CityObjects": {
-            "building1": {
-                "type": "Building",
-                "attributes": {"function": "residential"},
-                "geometry": [_cube_geometry(0)],
-            },
-            "building2": {
-                "type": "Building",
-                "attributes": {"function": "commercial"},
-                "geometry": [_cube_geometry(8)], # because vuilding 1 already uses 0-7
-            },
-        },
-    }
-
     file_path = os.path.join(temp_dir, "input.city.json")
     with open(file_path, "w", encoding="utf-8") as f:
-        json.dump(citymodel, f)     # dict → real .json file on disk
+        json.dump(_two_cubes_citymodel(), f)     # dict → real .json file on disk
 
     result = load_cityjson_model(file_path)  # file on disk -> dict
 
@@ -142,4 +124,16 @@ def test_round_trip_after_deleting_one_building():
     assert "building1" in output["CityObjects"]  # building1 should still be there
 
 
+    shutil.rmtree(temp_dir)     # delete the directory
+
+def test_save_cityjson_model_round_trip():
+    """dict → save_cityjson_model → file → load_cityjson_model → dict"""
+
+    temp_dir = tempfile.mkdtemp()   # a throwaway directory somewhere in the container's /tmp
+    file_path = os.path.join(temp_dir, "out.city.json")
+
+    save_cityjson_model(_two_cubes_citymodel(), file_path)  # write out a CityJSON model
+    loaded_back = load_cityjson_model(file_path)  # read the cityjson model back
+
+    assert loaded_back == _two_cubes_citymodel()  # should be identical to what we wrote out
     shutil.rmtree(temp_dir)     # delete the directory
