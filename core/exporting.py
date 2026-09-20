@@ -1,6 +1,8 @@
 """Writes QGIS layers back out as CityJSON."""
 
 import json
+from .utils import createCityJSON
+from . import subset
 
 
 class CityJSONExporter:
@@ -11,16 +13,32 @@ class CityJSONExporter:
         self.citymodel = citymodel
 
     def export(self) -> dict: # returns a dictionary representing the CityJSON model
-        """Export the configured layers as a CityJSON model dictionary."""
-        # Approach 1 - ignore the original, rebuild from the table.
-            # read self.layers, build vertices + CityObjects from scratch
-            # self.citymodel only used for transform / version / metadata
-        # Approach 2 (patch) - start from the original, change only what differs.
-            # copy self.citymodel
-            # diff self.layers against it
-            # apply only the deletions / geometry edits / attribute edits
-            # return the patched copy
-        raise NotImplementedError
+        """
+        Export the configured layers as a CityJSON model dictionary.
+        1. Create a new CityJSON model with the same version and transform as the original.
+        2. get the surviving IDs from the layers.
+        3. For each surviving ID, copy the corresponding CityObject from the original model to the new model.
+        4. Rebuild the vertices array from the surviving CityObjects, and update array indices.
+        """
+        new_cm = createCityJSON()
+        new_cm["version"] = self.citymodel["version"] # copy version
+        if "transform" in self.citymodel: # copy transform if it exists
+            new_cm["transform"] = self.citymodel["transform"]
+        surviving_ids = self.get_surviving_ids()
+        for uid in self.citymodel["CityObjects"]: # copy the CityObject to the new model, if it exists in the surviving IDs
+            if uid in surviving_ids:
+                new_cm["CityObjects"][uid] = self.citymodel["CityObjects"][uid]
+        # rebuild the vertices array from the surviving CityObjects, and update array indices
+        subset.process_geometry(self.citymodel, new_cm)
+        if "appearance" in self.citymodel: # copy appearance if it exists
+            subset.process_appearance(self.citymodel, new_cm)
+        if "metadata" in self.citymodel: # copy metadata if it exists
+            new_cm["metadata"] = self.citymodel["metadata"]
+        if "geometry-templates" in self.citymodel: # copy geometry-templates if it exists
+            subset.process_templates(self.citymodel, new_cm)
+        # prune dangling children from the new model
+        self.prune_dangling_children(new_cm, surviving_ids)
+        return new_cm
 
     def get_surviving_ids(self):
         uids = set() # set helps us avoid duplicates
@@ -38,6 +56,15 @@ class CityJSONExporter:
                     uids.add(parent) # add the parent to the set of surviving ids
                 
         return uids
+
+    def prune_dangling_children(self, citymodel, surviving_ids):
+        """Remove any CityObjects children from the parent parts"""
+        for obj in citymodel["CityObjects"].values():
+            if "children" in obj:
+                obj["children"] = [child for child in obj["children"] if child in surviving_ids]
+                if not obj["children"]:
+                    del obj["children"]
+        
 
 
 def save_cityjson_model(citymodel: dict, filepath: str) -> None:

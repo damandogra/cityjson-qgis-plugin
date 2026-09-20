@@ -85,6 +85,14 @@ def _hierarchy_citymodel():
         },
     }
 
+def _delete_feature(layers, uid):
+    for layer in layers:
+        for f in layer.getFeatures():
+            if f["uid"] == uid:
+                layer.dataProvider().deleteFeatures([f.id()])
+                return
+    raise AssertionError(f"{uid} not found in any layer")
+
 
 def test_fixture_writes_and_reads_back():
     temp_dir = tempfile.mkdtemp()   # a throwaway directory somewhere in the container's /tmp
@@ -151,6 +159,7 @@ def test_round_trip_after_deleting_one_building():
     assert "building2" not in output["CityObjects"]  # building2 should be gone
     assert "building1" in output["CityObjects"]  # building1 should still be there
 
+    assert len(output["vertices"]) == 8   # one cube's worth
 
     shutil.rmtree(temp_dir)     # delete the directory
 
@@ -192,7 +201,6 @@ def test_get_surviving_ids_after_delete(qgis_app):
     assert "building2" not in surviving_ids  # building2 should be gone
     assert "building1" in surviving_ids  # building1 should still be there
 
-
 def test_get_surviving_ids_after_delete_parent(qgis_app):
     cm = _hierarchy_citymodel()
 
@@ -221,29 +229,30 @@ def test_get_surviving_ids_after_delete_parent(qgis_app):
     surviving = CityJSONExporter(layers, citymodel=cm).get_surviving_ids()
     assert surviving == {"building1", "building2", "building3"}
 
-def test_get_surviving_ids_after_delete_children(qgis_app):
+def test_deleting_parent_resurrects_it(qgis_app):
     cm = _hierarchy_citymodel()
 
-    loader = CityJSONLoader(filepath="dummy", citymodel=cm) # build the converter
-    loader.load()  # populate the layer manager
-    layers = loader.layer_manager.get_all_layers() # collect the finished layer
+    loader = CityJSONLoader(filepath="dummy", citymodel=cm)
+    loader.load()
+    layers = loader.layer_manager.get_all_layers()
 
-    # find building 2
-    fid = None
-    target_layer = None
-    for layer in layers: # iterating each layer to find the one that contains building1
-        for f in layer.getFeatures(): # inner: each row in that layer (table)
-            if f["uid"] == "building2":
-                target_layer = layer
-                fid = f.id()
-                break
-        if fid is not None: # if we found the feature, we can break out of the outer loop as well
-            break
+    _delete_feature(layers, "building1")
 
-    assert fid is not None, "building2 not found in the layer"
-    assert target_layer is not None, "building2 not found in any layer"
-
-    # delete building 2's feature from the layer -- this is the user's edit in QGIS
-    target_layer.dataProvider().deleteFeatures([fid])
     surviving = CityJSONExporter(layers, citymodel=cm).get_surviving_ids()
-    assert surviving == {"building1", "building3"}
+    assert surviving == {"building1", "building2", "building3"}
+
+    exported = CityJSONExporter(layers, citymodel=cm).export()
+    assert exported["CityObjects"]["building1"]["children"] == ["building2", "building3"]
+
+def test_prune_drops_deleted_children(qgis_app):
+    cm = _hierarchy_citymodel()
+
+    loader = CityJSONLoader(filepath="dummy", citymodel=cm)
+    loader.load()
+    layers = loader.layer_manager.get_all_layers()
+
+    _delete_feature(layers, "building2")
+
+    exported = CityJSONExporter(layers, citymodel=cm).export()
+    assert exported["CityObjects"]["building1"]["children"] == ["building3"]
+    assert "building2" not in exported["CityObjects"]
