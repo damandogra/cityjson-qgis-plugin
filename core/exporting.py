@@ -2,6 +2,7 @@
 
 import json
 
+
 class CityJSONExporter:
     """Rebuilds a CityJSON model from QGIS layers."""
 
@@ -20,6 +21,23 @@ class CityJSONExporter:
             # apply only the deletions / geometry edits / attribute edits
             # return the patched copy
         raise NotImplementedError
+
+    def get_surviving_ids(self):
+        uids = set() # set helps us avoid duplicates
+        for layer in self.layers:
+            for feature in layer.getFeatures():
+                uid = feature["uid"]
+                uids.add(uid)
+
+        # a surviving child with a deleted parent is a dangling reference; a deleted child creates no such problem, so it stays deleted.
+        for uid in list(uids):
+            obj = self.citymodel["CityObjects"][uid]
+
+            if "parents" in obj:
+                for parent in obj["parents"]: # iterate through the parents
+                    uids.add(parent) # add the parent to the set of surviving ids
+                
+        return uids
 
 
 def save_cityjson_model(citymodel: dict, filepath: str) -> None:
