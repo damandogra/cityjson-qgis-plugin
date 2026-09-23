@@ -4,6 +4,7 @@ import json
 import copy
 from .utils import createCityJSON
 from . import subset
+from .layers import _stringify_attribute
 
 
 class CityJSONExporter:
@@ -30,6 +31,10 @@ class CityJSONExporter:
         for uid in self.citymodel["CityObjects"]: # copy the CityObject to the new model, if it exists in the surviving IDs
             if uid in surviving_ids:
                 new_cm["CityObjects"][uid] = copy.deepcopy(self.citymodel["CityObjects"][uid]) # copy the CityObject to the new model
+
+        # apply the attribute edits to the copied model, so that the new model has the same attributes as the original model, except for the edits made in QGIS
+        self.apply_attribute_edits(new_cm)
+
 
         # rebuild the vertices array from the surviving CityObjects, and update array indices
         subset.process_geometry(self.citymodel, new_cm)
@@ -67,7 +72,30 @@ class CityJSONExporter:
                 obj["children"] = [child for child in obj["children"] if child in surviving_ids]
                 if not obj["children"]:
                     del obj["children"]
-        
+
+    def apply_attribute_edits(self, new_cm):
+        """Apply the attribute edits from the QGIS layers to the new CityJSON model."""
+        for layer in self.layers:
+            for feature in layer.getFeatures():
+                uid = feature["uid"]
+                obj = new_cm["CityObjects"][uid]
+                if uid in new_cm["CityObjects"]:
+                    for i in layer.fields():
+                        if i.name().startswith("attribute."): # only consider fields that start with "attribute."
+                            old_attribute_value = obj.get("attributes", {}).get(i.name()[10:], None) # [i.name()[10:]] cuts of the first 10 characters
+                            expected_values_for_old_attribute = _stringify_attribute(old_attribute_value) # get the expected values for the old attribute value
+                            new_attribute_value = feature[i.name()]
+                            if new_attribute_value != expected_values_for_old_attribute:
+                                if isinstance(old_attribute_value, (dict, list)):
+                                    try:
+                                        parsed = json.loads(new_attribute_value) # parse the new attribute value as JSON
+                                    except (json.JSONDecodeError, TypeError) as exc:
+                                        raise ValueError(
+                                            f"{uid}: attribute '{i.name()[10:]}' is not valid JSON: {new_attribute_value}"
+                                        ) from exc
+                                    obj.setdefault("attributes", {})[i.name()[10:]] = parsed # [i.name()[10:]] cuts of the first 10 characters
+                                else:
+                                    obj.setdefault("attributes", {})[i.name()[10:]] = new_attribute_value # [i.name()[10:]] cuts of the first 10 characters
 
 
 def save_cityjson_model(citymodel: dict, filepath: str) -> None:

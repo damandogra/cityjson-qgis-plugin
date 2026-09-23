@@ -2,6 +2,7 @@ import json
 import os
 import shutil
 import tempfile
+import pytest
 
 from core.loading import CityJSONLoader, load_cityjson_model
 from core.exporting import CityJSONExporter, save_cityjson_model
@@ -93,6 +94,16 @@ def _delete_feature(layers, uid):
                 return
     raise AssertionError(f"{uid} not found in any layer")
 
+def _set_attribute(layers, uid, field_name, value):
+    """Simulate the user editing one cell in QGIS."""
+    for layer in layers:
+        for f in layer.getFeatures():
+            if f["uid"] == uid:
+                idx = layer.fields().indexOf(field_name)
+                assert idx != -1, f"{field_name} is not a column"
+                layer.dataProvider().changeAttributeValues({f.id(): {idx: value}})
+                return
+    raise AssertionError(f"{uid} not found in any layer")
 
 def test_fixture_writes_and_reads_back():
     temp_dir = tempfile.mkdtemp()   # a throwaway directory somewhere in the container's /tmp
@@ -256,3 +267,90 @@ def test_prune_drops_deleted_children(qgis_app):
     exported = CityJSONExporter(layers, citymodel=cm).export()
     assert exported["CityObjects"]["building1"]["children"] == ["building3"]
     assert "building2" not in exported["CityObjects"]
+
+# Test - changing an attribute in QGIS and exporting it back to CityJSON
+def test_attribute_change_round_trip(qgis_app):
+    cm = _two_cubes_citymodel()
+
+    loader = CityJSONLoader(filepath="dummy", citymodel=cm) # build the converter
+    loader.load()  # populate the layer manager
+    layers = loader.layer_manager.get_all_layers() # collect the finished layer
+
+    # find building 1
+    fid = None
+    target_layer = None
+    for layer in layers: # iterating each layer to find the one that contains building1
+        for f in layer.getFeatures(): # inner: each row in that layer (table)
+            f["uid"] = "building1"  # set the uid to building1
+            fid = f.id() # get the feature id
+            target_layer = layer # remember the layer that contains building1
+            break
+        if fid is not None: # if we found the feature, we can break out of the outer loop as well
+            break
+
+    assert fid is not None, "building1 not found in the layer"
+    assert target_layer is not None, "building1 not found in any layer"
+
+    # edit the feature (user does in qgis)
+    idx = target_layer.fields().indexOf("attribute.function") # get the index of the attribute.function field
+    target_layer.dataProvider().changeAttributeValues({fid: {idx: "mixed"}}) # change the value of attribute.function to mixed
+
+    # Export and check
+    
+    out = CityJSONExporter(layers, citymodel=cm).export()
+    assert out["CityObjects"]["building1"]["attributes"]["function"] == "mixed"
+    assert out["CityObjects"]["building2"]["attributes"]["function"] == "commercial"  # unchanged
+
+def test_untouched_int_keeps_its_type(qgis_app):
+    cm = _two_cubes_citymodel()
+    cm["CityObjects"]["building1"]["attributes"]["height"] = 12
+    cm["CityObjects"]["building2"]["attributes"]["height"] = 12.5  # makes the column Double
+
+    loader = CityJSONLoader(filepath="dummy", citymodel=cm)
+    loader.load()
+    layers = loader.layer_manager.get_all_layers()
+
+    out = CityJSONExporter(layers, citymodel=cm).export()  # no edits
+
+    height = out["CityObjects"]["building1"]["attributes"]["height"]
+    assert height == 12
+    assert isinstance(height, int)  # not 12.0
+
+def test_missing_attribute_stays_missing(qgis_app):
+    cm = _two_cubes_citymodel()
+    cm["CityObjects"]["building1"]["attributes"]["height"] = 12  # only building1
+
+    loader = CityJSONLoader(filepath="dummy", citymodel=cm)
+    loader.load()
+    layers = loader.layer_manager.get_all_layers()
+
+    out = CityJSONExporter(layers, citymodel=cm).export()  # no edits
+
+    assert "height" not in out["CityObjects"]["building2"]["attributes"]
+
+
+def test_edited_list_comes_back_as_list(qgis_app):
+    cm = _two_cubes_citymodel()
+    cm["CityObjects"]["building1"]["attributes"]["tags"] = ["a", "b"]
+
+    loader = CityJSONLoader(filepath="dummy", citymodel=cm)
+    loader.load()
+    layers = loader.layer_manager.get_all_layers()
+
+    _set_attribute(layers, "building1", "attribute.tags", '["a", "c"]')
+
+    out = CityJSONExporter(layers, citymodel=cm).export()
+    assert out["CityObjects"]["building1"]["attributes"]["tags"] == ["a", "c"]
+
+    def test_broken_json_list_raises_clear_error(qgis_app):
+        cm = _two_cubes_citymodel()
+        cm["CityObjects"]["building1"]["attributes"]["tags"] = ["a", "b"]
+
+        loader = CityJSONLoader(filepath="dummy", citymodel=cm)
+        loader.load()
+        layers = loader.layer_manager.get_all_layers()
+
+        _set_attribute(layers, "building1", "attribute.tags", '["a", "c"')  # missing ]
+
+        with pytest.raises(ValueError):
+            CityJSONExporter(layers, citymodel=cm).export()
