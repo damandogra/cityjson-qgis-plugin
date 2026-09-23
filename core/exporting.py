@@ -1,6 +1,7 @@
 """Writes QGIS layers back out as CityJSON."""
 
 import json
+import copy
 from .utils import createCityJSON
 from . import subset
 
@@ -24,10 +25,12 @@ class CityJSONExporter:
         new_cm["version"] = self.citymodel["version"] # copy version
         if "transform" in self.citymodel: # copy transform if it exists
             new_cm["transform"] = self.citymodel["transform"]
+
         surviving_ids = self.get_surviving_ids()
         for uid in self.citymodel["CityObjects"]: # copy the CityObject to the new model, if it exists in the surviving IDs
             if uid in surviving_ids:
-                new_cm["CityObjects"][uid] = self.citymodel["CityObjects"][uid]
+                new_cm["CityObjects"][uid] = copy.deepcopy(self.citymodel["CityObjects"][uid]) # copy the CityObject to the new model
+
         # rebuild the vertices array from the surviving CityObjects, and update array indices
         subset.process_geometry(self.citymodel, new_cm)
         if "appearance" in self.citymodel: # copy appearance if it exists
