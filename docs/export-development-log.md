@@ -5,6 +5,35 @@ gets one entry at PR time). Keep entries short — what changed, why, what's blo
 
 ---
 
+## 2026-10-19 — X4 and X5 done, tests repaired
+
+- X4: export() deepcopies each surviving CityObject (`5e79164`, 23 Sept).
+  get_subset_cotype assigns by reference and process_geometry rewrites
+  indices in place, so without it export corrupts the live model.
+- X4 test: delete building1, export twice, assert both outputs equal and
+  the original unchanged. Verified red with the deepcopy removed.
+  Needed the delete — with both cubes surviving, indices 0-15 compact onto
+  0-15 and the bug is invisible.
+- X5: apply_attribute_edits only writes a field if it differs from the
+  stringified original, so untouched values keep their type (int stays int,
+  missing stays missing). Edited dicts/lists go through json.loads; invalid
+  JSON raises ValueError naming the object and field.
+- Fixed in exporting.py: uid lookup ran before its `in` guard.
+- Fixed in test_export.py: one test was nested inside another and never
+  ran; attribute test used `f["uid"] = ...` (assignment) instead of `==`.
+- 262 passed.
+
+Still open:
+- transform and metadata are copied by reference (harmless today).
+- Coverage: appearance / metadata / geometry-templates branches in export()
+  are never exercised. That's X7.
+- Parent resurrection one level deep, process_templates KeyError on
+  geometry-less objects (from 20 Sept) — unchanged.
+- Correction: the 2026-08-13 entry says `cityjson-writter-copy`; the branch
+  is `cityjson-export`.
+
+
+
 ## 2026-09-20 — X3 done, round-trip green
 
 - export() builds the subset: createCityJSON, copy version/transform, copy
