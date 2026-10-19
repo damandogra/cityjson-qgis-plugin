@@ -78,25 +78,24 @@ class CityJSONExporter:
         for layer in self.layers:
             for feature in layer.getFeatures():
                 uid = feature["uid"]
-                obj = new_cm["CityObjects"][uid]
-                if uid in new_cm["CityObjects"]:
+                if uid in new_cm["CityObjects"]:       # is the key there? True/False, never crashes
+                    obj = new_cm["CityObjects"][uid]   # only runs if it is, so it's safe
                     for i in layer.fields():
                         if i.name().startswith("attribute."): # only consider fields that start with "attribute."
-                            old_attribute_value = obj.get("attributes", {}).get(i.name()[10:], None) # [i.name()[10:]] cuts of the first 10 characters
-                            expected_values_for_old_attribute = _stringify_attribute(old_attribute_value) # get the expected values for the old attribute value
+                            old_attribute_value = obj.get("attributes", {}).get(i.name()[10:], None)
+                            expected_values_for_old_attribute = _stringify_attribute(old_attribute_value)
                             new_attribute_value = feature[i.name()]
                             if new_attribute_value != expected_values_for_old_attribute:
                                 if isinstance(old_attribute_value, (dict, list)):
                                     try:
-                                        parsed = json.loads(new_attribute_value) # parse the new attribute value as JSON
+                                        parsed = json.loads(new_attribute_value)
                                     except (json.JSONDecodeError, TypeError) as exc:
                                         raise ValueError(
                                             f"{uid}: attribute '{i.name()[10:]}' is not valid JSON: {new_attribute_value}"
                                         ) from exc
-                                    obj.setdefault("attributes", {})[i.name()[10:]] = parsed # [i.name()[10:]] cuts of the first 10 characters
+                                    obj.setdefault("attributes", {})[i.name()[10:]] = parsed
                                 else:
-                                    obj.setdefault("attributes", {})[i.name()[10:]] = new_attribute_value # [i.name()[10:]] cuts of the first 10 characters
-
+                                    obj.setdefault("attributes", {})[i.name()[10:]] = new_attribute_value
 
 def save_cityjson_model(citymodel: dict, filepath: str) -> None:
     """Save a CityJSON model dictionary to a file."""
