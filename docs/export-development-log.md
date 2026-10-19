@@ -5,6 +5,16 @@ gets one entry at PR time). Keep entries short — what changed, why, what's blo
 
 ---
 
+## 2026-10-19 — X8: cjval validation
+
+- Validated round-trip output (two cubes, building2 deleted) at validator.cityjson.org (cjval WASM, schemas v2.0.2).
+- Output: 100% valid — no errors, no warnings. `unused vertices` clean → `process_geometry` compaction works.
+- Input fixture: valid, 4 `duplicate vertices` warnings — the cubes share a face at x=1000 and `_cube_vertices` writes each cube's corners separately. Fixture quirk, not exporter.
+- Exporter doesn't dedup; it inherits whatever the original had.
+- Limits: cjval checks schema/structure only, not geometry (planarity, solids → val3dity). Fixture has no Solids/semantics/appearance, so those checks weren't exercised.
+- Next: re-run on X7's fixture once it exists.
+
+
 ## 2026-10-19 — X4 and X5 done, tests repaired
 
 - X4: export() deepcopies each surviving CityObject (`5e79164`, 23 Sept).
