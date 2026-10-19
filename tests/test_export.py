@@ -3,6 +3,7 @@ import os
 import shutil
 import tempfile
 import pytest
+import copy
 
 from core.loading import CityJSONLoader, load_cityjson_model
 from core.exporting import CityJSONExporter, save_cityjson_model
@@ -272,31 +273,14 @@ def test_prune_drops_deleted_children(qgis_app):
 def test_attribute_change_round_trip(qgis_app):
     cm = _two_cubes_citymodel()
 
-    loader = CityJSONLoader(filepath="dummy", citymodel=cm) # build the converter
+    loader = CityJSONLoader(filepath="dummy", citymodel=cm)  # build the converter
     loader.load()  # populate the layer manager
-    layers = loader.layer_manager.get_all_layers() # collect the finished layer
+    layers = loader.layer_manager.get_all_layers()  # collect the finished layer
 
-    # find building 1
-    fid = None
-    target_layer = None
-    for layer in layers: # iterating each layer to find the one that contains building1
-        for f in layer.getFeatures(): # inner: each row in that layer (table)
-            f["uid"] = "building1"  # set the uid to building1
-            fid = f.id() # get the feature id
-            target_layer = layer # remember the layer that contains building1
-            break
-        if fid is not None: # if we found the feature, we can break out of the outer loop as well
-            break
+    # edit building1's function (the user does this in QGIS)
+    _set_attribute(layers, "building1", "attribute.function", "mixed")
 
-    assert fid is not None, "building1 not found in the layer"
-    assert target_layer is not None, "building1 not found in any layer"
-
-    # edit the feature (user does in qgis)
-    idx = target_layer.fields().indexOf("attribute.function") # get the index of the attribute.function field
-    target_layer.dataProvider().changeAttributeValues({fid: {idx: "mixed"}}) # change the value of attribute.function to mixed
-
-    # Export and check
-    
+    # export and check
     out = CityJSONExporter(layers, citymodel=cm).export()
     assert out["CityObjects"]["building1"]["attributes"]["function"] == "mixed"
     assert out["CityObjects"]["building2"]["attributes"]["function"] == "commercial"  # unchanged
@@ -342,15 +326,34 @@ def test_edited_list_comes_back_as_list(qgis_app):
     out = CityJSONExporter(layers, citymodel=cm).export()
     assert out["CityObjects"]["building1"]["attributes"]["tags"] == ["a", "c"]
 
-    def test_broken_json_list_raises_clear_error(qgis_app):
-        cm = _two_cubes_citymodel()
-        cm["CityObjects"]["building1"]["attributes"]["tags"] = ["a", "b"]
 
-        loader = CityJSONLoader(filepath="dummy", citymodel=cm)
-        loader.load()
-        layers = loader.layer_manager.get_all_layers()
+def test_broken_json_list_raises_clear_error(qgis_app):
+    cm = _two_cubes_citymodel()
+    cm["CityObjects"]["building1"]["attributes"]["tags"] = ["a", "b"]
 
-        _set_attribute(layers, "building1", "attribute.tags", '["a", "c"')  # missing ]
+    loader = CityJSONLoader(filepath="dummy", citymodel=cm)
+    loader.load()
+    layers = loader.layer_manager.get_all_layers()
 
-        with pytest.raises(ValueError):
-            CityJSONExporter(layers, citymodel=cm).export()
+    _set_attribute(layers, "building1", "attribute.tags", '["a", "c"')  # missing ]
+
+    with pytest.raises(ValueError):
+        CityJSONExporter(layers, citymodel=cm).export()
+
+
+def test_export_does_not_mutate_original(qgis_app):
+    cm = _two_cubes_citymodel()
+    before = copy.deepcopy(cm)  # snapshot of the original, to compare against later
+
+    loader = CityJSONLoader(filepath="dummy", citymodel=cm)
+    loader.load()
+    layers = loader.layer_manager.get_all_layers()
+
+    # delete building1, so building2's vertex indices 8-15 get remapped to 0-7 on export
+    _delete_feature(layers, "building1")
+
+    out1 = CityJSONExporter(layers, citymodel=cm).export()
+    out2 = CityJSONExporter(layers, citymodel=cm).export()
+
+    assert out1 == out2  # exporting twice gives the same result
+    assert cm == before  # the original model was not touched
