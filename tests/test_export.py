@@ -113,10 +113,10 @@ def test_fixture_writes_and_reads_back():
     with open(file_path, "w", encoding="utf-8") as f:
         json.dump(_two_cubes_citymodel(), f)     # dict → real .json file on disk
 
-    result = load_cityjson_model(file_path)  # file on disk -> dict
+    original = load_cityjson_model(file_path)  # file on disk -> dict
 
-    loader = CityJSONLoader(filepath=file_path, citymodel=result)  # build the converter
-    for key, obj in result["CityObjects"].items():
+    loader = CityJSONLoader(filepath=file_path, citymodel=original)  # build the converter
+    for key, obj in original["CityObjects"].items():
         loader.layer_manager.add_object(key, obj)  # each CityObject -> one QGIS row
 
     layers = loader.layer_manager.get_all_layers()  # collect the finished layer
@@ -135,10 +135,10 @@ def test_round_trip_after_deleting_one_building():
     with open(file_path, "w", encoding="utf-8") as f:
         json.dump(_two_cubes_citymodel(), f)     # dict → real .json file on disk
 
-    result = load_cityjson_model(file_path)  # file on disk -> dict
+    original = load_cityjson_model(file_path)  # file on disk -> dict
 
-    loader = CityJSONLoader(filepath=file_path, citymodel=result)  # build the converter
-    for key, obj in result["CityObjects"].items():
+    loader = CityJSONLoader(filepath=file_path, citymodel=original)  # build the converter
+    for key, obj in original["CityObjects"].items():
         loader.layer_manager.add_object(key, obj)  # each CityObject -> one QGIS row
 
     layers = loader.layer_manager.get_all_layers()  # collect the finished layer
@@ -162,8 +162,8 @@ def test_round_trip_after_deleting_one_building():
     layer.dataProvider().deleteFeatures([fid])
 
     # export what's left, write it out
-    exported = CityJSONExporter (layers, citymodel=result).export()
-    save_cityjson_model(exported, os.path.join(temp_dir, "output.city.json"))
+    exported = CityJSONExporter(layers, citymodel=original).export()
+    save_cityjson_model(exported, os.path.join(temp_dir, "output.city.json")) # save the exported model in a temporary directory, that deletes after test
 
     # read it back and check
     output = load_cityjson_model(os.path.join(temp_dir, "output.city.json"))
