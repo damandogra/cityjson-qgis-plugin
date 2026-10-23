@@ -5,14 +5,17 @@ import copy
 from .utils import createCityJSON
 from . import subset
 from .layers import _stringify_attribute
+from .geometry import GeometryReader, VerticesCache
 
 
 class CityJSONExporter:
     """Rebuilds a CityJSON model from QGIS layers."""
 
-    def __init__(self, layers, citymodel=None):
+    def __init__(self, layers, citymodel=None, loaded_lod="All", keep_unloaded=True):
         self.layers = layers
         self.citymodel = citymodel
+        self.loaded_lod = loaded_lod # tells the exporter which lod was loaded in qgis
+        self.keep_unloaded = keep_unloaded  # what should happen to never loaded things, users decision (keep: default or False : drop)
 
     def export(self) -> dict: # returns a dictionary representing the CityJSON model
         """
@@ -49,11 +52,21 @@ class CityJSONExporter:
         return new_cm
 
     def get_surviving_ids(self):
+        """Ids that survive export: rows in QGIS, never-loaded objects (if kept), and their parents."""
         uids = set() # set helps us avoid duplicates
+
+        # Part 1: collects objects that has row in qgis
         for layer in self.layers:
             for feature in layer.getFeatures():
                 uid = feature["uid"]
                 uids.add(uid)
+
+        # Part 2: add objects that were never loaded
+        reader = GeometryReader(VerticesCache(), self.citymodel.get("geometry-templates"), lod=self.loaded_lod)
+        for uid, obj in self.citymodel["CityObjects"].items(): # loops over the objects
+            if self.keep_unloaded and not reader.has_lod(obj.get("geometry", []), self.loaded_lod): # checks in the original file, if the loaded lod does not exist for the object, adds the uid to surviving
+                uids.add(uid)
+        
 
         # a surviving child with a deleted parent is a dangling reference; a deleted child creates no such problem, so it stays deleted.
         for uid in list(uids):

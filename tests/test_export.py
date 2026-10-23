@@ -87,6 +87,34 @@ def _hierarchy_citymodel():
         },
     }
 
+def _unloaded_lod_citymodel():
+    """house_a and house_b have LoD1 + LoD2; tree has only LoD2"""
+    return {
+        "type": "CityJSON",
+        "version": "2.0",
+        "transform": {"scale": [0.001, 0.001, 0.001], "translate": [0.0, 0.0, 0.0]},
+        "vertices": _cube_vertices(0) + _cube_vertices(2000) + _cube_vertices(4000),  # three cubes, shifted along x
+        "CityObjects": {
+            "house_a": {
+                "type": "Building",
+                "attributes": {"function": "residential"},
+                "geometry": [_cube_geometry(0), {**_cube_geometry(0), "lod": "2"}] # ** copies every key from _cube_geometry(0), then lod 2 overwrites LoD
+            },
+            "house_b": {
+                "type": "Building",
+                "attributes": {"function": "commercial"},
+                "geometry": [_cube_geometry(8), {**_cube_geometry(8), "lod": "2"}], # because house_a, already uses 0-7
+            },
+            "tree":{
+                "type": "SolitaryVegetationObject",
+                "geometry": [{**_cube_geometry(16), "lod": "2"}]
+            }
+        },
+    }
+
+
+
+
 def _delete_feature(layers, uid):
     for layer in layers:
         for f in layer.getFeatures():
@@ -312,7 +340,6 @@ def test_missing_attribute_stays_missing(qgis_app):
 
     assert "height" not in out["CityObjects"]["building2"]["attributes"]
 
-
 def test_edited_list_comes_back_as_list(qgis_app):
     cm = _two_cubes_citymodel()
     cm["CityObjects"]["building1"]["attributes"]["tags"] = ["a", "b"]
@@ -326,7 +353,6 @@ def test_edited_list_comes_back_as_list(qgis_app):
     out = CityJSONExporter(layers, citymodel=cm).export()
     assert out["CityObjects"]["building1"]["attributes"]["tags"] == ["a", "c"]
 
-
 def test_broken_json_list_raises_clear_error(qgis_app):
     cm = _two_cubes_citymodel()
     cm["CityObjects"]["building1"]["attributes"]["tags"] = ["a", "b"]
@@ -339,7 +365,6 @@ def test_broken_json_list_raises_clear_error(qgis_app):
 
     with pytest.raises(ValueError):
         CityJSONExporter(layers, citymodel=cm).export()
-
 
 def test_export_does_not_mutate_original(qgis_app):
     cm = _two_cubes_citymodel()
@@ -357,3 +382,24 @@ def test_export_does_not_mutate_original(qgis_app):
 
     assert out1 == out2  # exporting twice gives the same result
     assert cm == before  # the original model was not touched
+
+def test_unloaded_object_survives_export(qgis_app):
+    """An object never loaded (no LoD1) must survive export, unlike a deleted one."""
+    # 1. cm = the fixture
+    cm = _unloaded_lod_citymodel()
+
+    # 2. loader with lod="1", then loader.load()
+    loader = CityJSONLoader(filepath="dummy", citymodel=cm, lod="1")
+    loader.load()
+
+    # 3. layers = ..., then delete house_b
+    layers = loader.layer_manager.get_all_layers()
+    _delete_feature(layers, "house_b")
+
+    # 4. out = export
+    out = CityJSONExporter(layers, citymodel=cm, loaded_lod="1").export()
+
+    # 5. asserts:
+    assert "house_b" not in out["CityObjects"]
+    assert len(out["CityObjects"]["house_a"]["geometry"]) == 2
+    assert "tree" in out["CityObjects"]
