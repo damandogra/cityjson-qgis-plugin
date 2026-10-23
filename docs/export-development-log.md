@@ -5,6 +5,31 @@ gets one entry at PR time). Keep entries short — what changed, why, what's blo
 
 ---
 
+## 23 Oct 2026 — X7: unloaded LoDs on export
+
+- **Problem:** loading at one LoD (e.g. `lod="1"`) skips objects with no geometry at that
+  LoD (`core/loading.py:182`), so they never get a QGIS row. Export treated "no row" as
+  "deleted", so a LoD2-only object (e.g. a tree) was silently dropped, while unloaded
+  LoDs of loaded objects were kept. Inconsistent, and the user never deleted it.
+- **Fix (export-side only):** `CityJSONExporter` takes `loaded_lod` (default `"All"`) and
+  `keep_unloaded` (default `True`). It re-checks each object with the loader's own
+  `GeometryReader.has_lod()`:
+  - has loaded LoD + no row → deleted by user → dropped
+  - no loaded LoD → never loaded → kept if `keep_unloaded`, else dropped
+- **Drop mode** also removes unloaded geometry entries from surviving objects, before
+  `process_geometry`, so their vertices are compacted out.
+- **Tests:** fixture `_unloaded_lod_citymodel()` (house_a, house_b: LoD1+LoD2; tree:
+  LoD2 only). Keep test: tree kept, house_b gone, house_a has 2 LoDs. Drop test: tree
+  gone, house_a only LoD1. Load via `loader.load()`, not manual `add_object`, or the
+  skip at line 182 is bypassed.
+- **Gotcha:** `has_lod` matches exactly `"All"`; a default of `"ALL"` resurrected every
+  deleted object (3 tests failed).
+- 264 passed.
+- **Next:** `loaded_lod` / `keep_unloaded` need to be exposed in the UI (X14 parameter,
+  X15 dialog); run cjval on both outputs.
+
+
+
 ## 2026-10-19 — X8: cjval validation
 
 - Validated round-trip output (two cubes, building2 deleted) at validator.cityjson.org (cjval WASM, schemas v2.0.2).
