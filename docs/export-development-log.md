@@ -5,7 +5,7 @@ gets one entry at PR time). Keep entries short — what changed, why, what's blo
 
 ---
 
-## 23 Oct 2026 — X7: unloaded LoDs on export
+## 2026-10-23 — X7b: unloaded LoDs on export
 
 - **Problem:** loading at one LoD (e.g. `lod="1"`) skips objects with no geometry at that
   LoD (`core/loading.py:182`), so they never get a QGIS row. Export treated "no row" as
@@ -18,6 +18,7 @@ gets one entry at PR time). Keep entries short — what changed, why, what's blo
   - no loaded LoD → never loaded → kept if `keep_unloaded`, else dropped
 - **Drop mode** also removes unloaded geometry entries from surviving objects, before
   `process_geometry`, so their vertices are compacted out.
+- Commits: `719eb4c` (keep), `2849ddb` (drop).
 - **Tests:** fixture `_unloaded_lod_citymodel()` (house_a, house_b: LoD1+LoD2; tree:
   LoD2 only). Keep test: tree kept, house_b gone, house_a has 2 LoDs. Drop test: tree
   gone, house_a only LoD1. Load via `loader.load()`, not manual `add_object`, or the
