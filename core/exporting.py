@@ -21,10 +21,12 @@ class CityJSONExporter:
         """
         Export the configured layers as a CityJSON model dictionary.
         1. Create a new CityJSON model with the same version and transform as the original.
-        2. get the surviving IDs from the layers.
+        2. Get the surviving IDs from the layers (plus never-loaded objects if keep_unloaded).
         3. For each surviving ID, copy the corresponding CityObject from the original model to the new model.
-        4. Rebuild the vertices array from the surviving CityObjects, and update array indices.
+        4. If keep_unloaded is False, drop geometry entries not at the loaded LoD.
+        5. Rebuild the vertices array from the surviving CityObjects, and update array indices.
         """
+
         new_cm = createCityJSON()
         new_cm["version"] = self.citymodel["version"] # copy version
         if "transform" in self.citymodel: # copy transform if it exists
@@ -34,6 +36,18 @@ class CityJSONExporter:
         for uid in self.citymodel["CityObjects"]: # copy the CityObject to the new model, if it exists in the surviving IDs
             if uid in surviving_ids:
                 new_cm["CityObjects"][uid] = copy.deepcopy(self.citymodel["CityObjects"][uid]) # copy the CityObject to the new model
+
+        # if the user decides to drop the unloaded lods get rid of them:
+        if not self.keep_unloaded: # if keep_unloaded is false then enters in this loop
+            reader = GeometryReader(VerticesCache(), self.citymodel.get("geometry-templates"), lod=self.loaded_lod) # builds the lod checker
+            
+            for obj in new_cm["CityObjects"].values(): # each object
+                kept=[]
+                for geom in obj.get("geometry", []): # each geometry of this object
+                    if reader.has_lod([geom], self.loaded_lod): # is this the loaded lod?
+                        kept.append(geom)
+                obj["geometry"] = kept # replace with only the loaded-LoD geometries
+
 
         # apply the attribute edits to the copied model, so that the new model has the same attributes as the original model, except for the edits made in QGIS
         self.apply_attribute_edits(new_cm)

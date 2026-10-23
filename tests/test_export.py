@@ -403,3 +403,24 @@ def test_unloaded_object_survives_export(qgis_app):
     assert "house_b" not in out["CityObjects"]
     assert len(out["CityObjects"]["house_a"]["geometry"]) == 2
     assert "tree" in out["CityObjects"]
+
+def test_unloaded_lods_dropped_when_not_kept(qgis_app):
+    """With keep_unloaded=False, never-loaded objects and unloaded LoDs are dropped."""
+    # 1. cm = the fixture
+    cm = _unloaded_lod_citymodel()
+
+    # 2. loader with lod="1", then loader.load()
+    loader = CityJSONLoader(filepath="dummy", citymodel=cm, lod="1")
+    loader.load()
+
+    # 3. layers = ..., then delete house_b
+    layers = loader.layer_manager.get_all_layers()
+    _delete_feature(layers, "house_b")
+
+    # 4. out = export
+    out = CityJSONExporter(layers, citymodel=cm, loaded_lod="1", keep_unloaded=False).export()
+
+    # 5. asserts:
+    assert "house_b" not in out["CityObjects"]
+    assert len(out["CityObjects"]["house_a"]["geometry"]) == 1 # only lod 1 left
+    assert "tree" not in out["CityObjects"] # dropped
