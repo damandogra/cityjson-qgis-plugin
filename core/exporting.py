@@ -24,7 +24,8 @@ class CityJSONExporter:
         2. Get the surviving IDs from the layers (plus never-loaded objects if keep_unloaded).
         3. For each surviving ID, copy the corresponding CityObject from the original model to the new model.
         4. If keep_unloaded is False, drop geometry entries not at the loaded LoD.
-        5. Rebuild the vertices array from the surviving CityObjects, and update array indices.
+        5. Drop geometry entries whose LoD row was deleted in QGIS.
+        6. Rebuild the vertices array from the surviving CityObjects, and update array indices.
         """
 
         new_cm = createCityJSON()
@@ -33,6 +34,14 @@ class CityJSONExporter:
             new_cm["transform"] = self.citymodel["transform"]
 
         surviving_ids = self.get_surviving_ids()
+        counts = self._count_rows()
+        has_lod_rows = False # assume no lod column
+        for _uid, lod in counts:
+            if lod is not None:
+                has_lod_rows = True
+                break
+
+
         for uid in self.citymodel["CityObjects"]: # copy the CityObject to the new model, if it exists in the surviving IDs
             if uid in surviving_ids:
                 new_cm["CityObjects"][uid] = copy.deepcopy(self.citymodel["CityObjects"][uid]) # copy the CityObject to the new model
@@ -46,7 +55,24 @@ class CityJSONExporter:
                 for geom in obj.get("geometry", []): # each geometry of this object
                     if reader.has_lod([geom], self.loaded_lod): # is this the loaded lod?
                         kept.append(geom)
-                obj["geometry"] = kept # replace with only the loaded-LoD geometries
+                if "geometry" in obj:
+                    obj["geometry"] = kept # replace with only the loaded-LoD geometries
+
+        # drop geometry entries whose lod row was deleted in qgis; the object survives if any row survives
+        if has_lod_rows:
+            reader = GeometryReader(VerticesCache(), self.citymodel.get("geometry-templates"), lod=self.loaded_lod)
+            for uid, obj in new_cm["CityObjects"].items(): # each surviving object
+                kept = []
+                for geom in obj.get("geometry", []): # each geometry of this object
+                    was_loaded = reader.has_lod([geom], self.loaded_lod) # was it shown in qgis?
+                    lod = str(reader.get_lod(geom)) # e.g. "2"
+                    if not was_loaded:
+                        kept.append(geom) # never loaded: keep
+                    elif (uid, lod) in counts:
+                        kept.append(geom) # row still exists: keep
+                    # else: row deleted, drop
+                if "geometry" in obj:
+                    obj["geometry"] = kept
 
 
         # apply the attribute edits to the copied model, so that the new model has the same attributes as the original model, except for the edits made in QGIS
@@ -65,15 +91,27 @@ class CityJSONExporter:
         self.prune_dangling_children(new_cm, surviving_ids)
         return new_cm
 
+    def _count_rows(self): # _ at the start of function is python convention for this method is only used inside this class
+        counts = {} # {(uid, lod): number of rows}.
+        for layer in self.layers:
+            has_lod = "lod" in layer.fields().names() # checks if lod column exists
+            for feature in layer.getFeatures():
+                uid = feature["uid"] # uid of this row
+                lod = feature["lod"] if has_lod else None
+                key = (uid, lod)
+                if key in counts: # count rows per (uid, lod); one object can have several rows
+                    counts[key] = counts[key] + 1
+                else:
+                    counts[key] = 1
+        return counts
+
     def get_surviving_ids(self):
         """Ids that survive export: rows in QGIS, never-loaded objects (if kept), and their parents."""
         uids = set() # set helps us avoid duplicates
 
         # Part 1: collects objects that has row in qgis
-        for layer in self.layers:
-            for feature in layer.getFeatures():
-                uid = feature["uid"]
-                uids.add(uid)
+        for uid, lod in self._count_rows():
+            uids.add(uid)
 
         # Part 2: add objects that were never loaded
         reader = GeometryReader(VerticesCache(), self.citymodel.get("geometry-templates"), lod=self.loaded_lod)
