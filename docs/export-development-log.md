@@ -5,6 +5,22 @@ gets one entry at PR time). Keep entries short — what changed, why, what's blo
 
 ---
 
+## 2026-10-24 — X7: fidelity test
+
+- `_cube_solid(first_vertex)` + `_fidelity_citymodel()`: building1 = LoD2 Solid with
+  semantics + material 1, plus LoD1 MultiSurface; building2 = same shape, material 0.
+  Two materials, metadata.
+- Test: load `lod="2"`, delete building2, export with `loaded_lod="2"`. Passed with no
+  exporter changes: Solid kept (1 shell, 6 faces), semantics unchanged, materials reduced
+  to the used one and renumbered 1 → 0, unloaded LoD1 kept, metadata unchanged.
+- Covers the appearance / metadata branches of `export()` flagged as unexercised on 19 Oct.
+- cjval: 100% valid.
+- Geometry not checked with val3dity: export copies it verbatim, so it would only test the
+  fixture. Use val3dity from X9 onward, when export changes coordinates.
+- Regression net for X10–X13.
+- 265 passed.
+
+
 ## 2026-10-23 — X7b: unloaded LoDs on export
 
 - **Problem:** loading at one LoD (e.g. `lod="1"`) skips objects with no geometry at that
