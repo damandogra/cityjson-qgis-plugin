@@ -112,6 +112,56 @@ def _unloaded_lod_citymodel():
         },
     }
 
+def _cube_solid(first_vertex):
+    """A Solid cube (one shell, six faces) whose corners start at first_vertex"""
+    return {
+        "type": "Solid",
+        "lod": "2",
+        "boundaries": [_cube_geometry(first_vertex)["boundaries"]],
+    }
+
+def _fidelity_citymodel():
+    """building1 (kept): LoD2 Solid + semantics + material 1, and LoD1.
+    building2 (deleted): LoD2 Solid + material 0."""
+    return {
+        "type": "CityJSON",
+        "version": "2.0",
+        "transform": {"scale": [0.001, 0.001, 0.001], "translate": [0.0, 0.0, 0.0]},
+        "metadata": {"title": "fidelity test"},
+        "appearance": {"materials": [{"name": "red"}, {"name": "blue"}]},
+        "vertices": _cube_vertices(0) + _cube_vertices(2000),
+        "CityObjects": {
+            "building1": {
+                "type": "Building",
+                "geometry": [
+                    {
+                        **_cube_solid(0), # lod2
+                        "semantics": {
+                            "surfaces": [{"type": "GroundSurface"}, {"type": "RoofSurface"}, {"type": "WallSurface"}],
+                            "values": [[0,1,2,2,2,2]],
+                        },
+                        "material": {"default": {"value": 1}}, # blue
+                    },
+                    _cube_geometry(0), # lod 1
+                ],
+            },
+            "building2": {
+                "type": "Building",
+                "geometry": [
+                    {
+                        **_cube_solid(8),
+                        "semantics": {
+                        "surfaces": [{"type": "GroundSurface"}, {"type": "RoofSurface"}, {"type": "WallSurface"}],
+                        "values": [[0,1,2,2,2,2]],
+                        },
+                        "material": {"default": {"value": 0}}, # red
+                    },
+                    _cube_geometry(8), # lod1
+                ],
+            }
+        },
+    }
+
 
 
 
@@ -383,6 +433,8 @@ def test_export_does_not_mutate_original(qgis_app):
     assert out1 == out2  # exporting twice gives the same result
     assert cm == before  # the original model was not touched
 
+# x7b
+
 def test_unloaded_object_survives_export(qgis_app):
     """An object never loaded (no LoD1) must survive export, unlike a deleted one."""
     # 1. cm = the fixture
@@ -424,3 +476,43 @@ def test_unloaded_lods_dropped_when_not_kept(qgis_app):
     assert "house_b" not in out["CityObjects"]
     assert len(out["CityObjects"]["house_a"]["geometry"]) == 1 # only lod 1 left
     assert "tree" not in out["CityObjects"] # dropped
+
+# x7
+def test_export_preserves_fidelity(qgis_app):
+    """Solid, semantics, material, unloaded LoD and metadata survive export."""
+    # 1. cm = the fixture
+    cm = _fidelity_citymodel()
+
+    # 2. loader with lod="2", then loader.load()
+    loader = CityJSONLoader(filepath="dummy", citymodel=cm, lod="2")
+    loader.load()
+    
+    # 3. layers, then delete building2
+    layers = loader.layer_manager.get_all_layers()
+    _delete_feature(layers, "building2")
+
+    # 4. out = export with loaded_lod="2"
+    out = CityJSONExporter(layers, citymodel=cm, loaded_lod="2", keep_unloaded=True).export()
+
+    # 5. asserts
+    b1 = out["CityObjects"]["building1"]
+    lod2 = b1["geometry"][0]          # the Solid (first in the list)
+
+    # building2 gone
+    assert "building2" not in out["CityObjects"]
+    # building1 still has 2 geometries (LoD1 survived without being loaded)
+    assert len(b1["geometry"]) == 2
+    # lod2["type"] is "Solid"
+    assert lod2["type"] == "Solid"
+    # len(lod2["boundaries"]) == 1        → one shell
+    assert len(lod2["boundaries"]) == 1
+    # len(lod2["boundaries"][0]) == 6     → six faces
+    assert len(lod2["boundaries"][0]) == 6
+    # lod2["semantics"] == the original building1 semantics in cm
+    assert lod2["semantics"] == cm["CityObjects"]["building1"]["geometry"][0]["semantics"]
+    # out["appearance"]["materials"] == [the original materials[1]]   → only blue left
+    assert out["appearance"]["materials"] == [cm["appearance"]["materials"][1]]
+    # lod2["material"]["default"]["value"] == 0                       → renumbered 1 → 0
+    assert lod2["material"]["default"]["value"] == 0
+    # out["metadata"] == cm["metadata"]
+    assert out["metadata"] == cm["metadata"]
