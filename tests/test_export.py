@@ -192,6 +192,19 @@ def _set_attribute(layers, uid, field_name, value):
                 return
     raise AssertionError(f"{uid} not found in any layer")
 
+def _delete_all_rows(layers, uid):
+    """Simulate the user deleting every row of an object."""
+    found = False
+    for layer in layers:
+        ids = [f.id() for f in layer.getFeatures() if f["uid"] == uid] # rows of this object
+        if ids:
+            layer.dataProvider().deleteFeatures(ids)
+            found = True
+    if not found:
+        raise AssertionError(f"{uid} not found in any layer")
+
+
+
 def test_fixture_writes_and_reads_back():
     temp_dir = tempfile.mkdtemp()   # a throwaway directory somewhere in the container's /tmp
 
@@ -551,3 +564,29 @@ def test_deleting_lod_row_drops_only_that_geometry(qgis_app):
     assert out["CityObjects"]["house_a"]["geometry"][0]["lod"] == "2"
     #    - house_b still has 2 geometries
     assert len(out["CityObjects"]["house_b"]["geometry"]) == 2
+
+def test_deleting_one_surface_row_rasies(qgis_app):
+    """Deleting one surface row of an object raises."""
+    cm = _fidelity_citymodel()
+    loader = CityJSONLoader(filepath="dummy", citymodel=cm, lod="2", load_semantic_surfaces=True)
+    loader.load()
+    layers = loader.layer_manager.get_all_layers()
+
+    _delete_feature(layers, "building1") # deletes the first row it finds which is exactly the first face
+
+    with pytest.raises(ValueError, match="building1"):
+        CityJSONExporter(layers, citymodel=cm, loaded_lod="2", semantic_surfaces=True).export()
+
+def test_deleting_all_surface_rows_drops_object(qgis_app):
+    """Deleting all surface rows of an object drops it."""
+    cm = _fidelity_citymodel()
+    loader = CityJSONLoader(filepath="dummy", citymodel=cm, lod="2", load_semantic_surfaces=True)
+    loader.load()
+    layers = loader.layer_manager.get_all_layers()
+
+    _delete_all_rows(layers, "building2")
+
+    out = CityJSONExporter(layers, citymodel=cm, loaded_lod="2", semantic_surfaces=True).export()
+
+    assert "building2" not in out["CityObjects"]
+    assert "building1" in out["CityObjects"]

@@ -5,17 +5,18 @@ import copy
 from .utils import createCityJSON
 from . import subset
 from .layers import _stringify_attribute
-from .geometry import GeometryReader, VerticesCache
+from .geometry import GeometryReader, VerticesCache, read_boundaries
 
 
 class CityJSONExporter:
     """Rebuilds a CityJSON model from QGIS layers."""
 
-    def __init__(self, layers, citymodel=None, loaded_lod="All", keep_unloaded=True):
+    def __init__(self, layers, citymodel=None, loaded_lod="All", keep_unloaded=True, semantic_surfaces=False):
         self.layers = layers
         self.citymodel = citymodel
         self.loaded_lod = loaded_lod # tells the exporter which lod was loaded in qgis
         self.keep_unloaded = keep_unloaded  # what should happen to never loaded things, users decision (keep: default or False : drop)
+        self.semantic_surfaces = semantic_surfaces # true if surfaces were loaded as separate rows (one row per face)
 
     def export(self) -> dict: # returns a dictionary representing the CityJSON model
         """
@@ -35,6 +36,8 @@ class CityJSONExporter:
 
         surviving_ids = self.get_surviving_ids()
         counts = self._count_rows()
+        if self.semantic_surfaces: # refuse partial surface deletes
+            self._check_surface_rows(counts)
         has_lod_rows = False # assume no lod column
         for _uid, lod in counts:
             if lod is not None:
@@ -91,8 +94,8 @@ class CityJSONExporter:
         self.prune_dangling_children(new_cm, surviving_ids)
         return new_cm
 
-    # 
-    def _count_rows(self): # _ at the start of function is python convention for this method is only used inside this class
+
+    def _count_rows(self): # "_" at the start of function is python convention for this method is only used inside this class
         counts = {} # {(uid, lod): number of rows}.
         for layer in self.layers:
             has_lod = "lod" in layer.fields().names() # checks if lod column exists
@@ -105,6 +108,32 @@ class CityJSONExporter:
                 else:
                     counts[key] = 1
         return counts
+
+    def _count_faces(self, geom):
+        """Number of faces (polygons) in one geometry."""
+        if geom["type"] == "GeometryInstace": # faces live in the template
+            geom = self.citymodel["geometry-templates"]["templates"][geom["template"]]
+        polygons, _semantics = read_boundaries(geom["boundaries"], None, None) # none, none = dont look up semantics, only count
+        return len(polygons)
+
+    def _check_surface_rows(self, counts):
+        """Raise if some, but not all, surface rows of an object were deleted."""
+        reader = GeometryReader(VerticesCache(), self.citymodel.get("geometry-templates"), lod=self.loaded_lod)
+        for (uid, lod), rows in counts.items():
+            obj = self.citymodel["CityObjects"][uid]
+            faces = 0
+
+            for geom in obj.get("geometry", []):
+                if not reader.has_lod([geom], self.loaded_lod):
+                    continue # not loaded in qgis
+                if lod is not None and str(reader.get_lod(geom)) != lod:
+                    continue # belongs to another lod's rows
+                faces += self._count_faces(geom)
+            expected = faces if faces > 1 else 1 # loader makes one row when there's only one face
+            if rows < expected:
+                raise ValueError(
+                    f"{uid}: {rows} of {expected} surface rows left; deleting single surfaces is not supported"
+                )
 
     def get_surviving_ids(self):
         """Ids that survive export: rows in QGIS, never-loaded objects (if kept), and their parents."""
