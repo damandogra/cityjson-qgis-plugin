@@ -5,6 +5,38 @@ gets one entry at PR time). Keep entries short — what changed, why, what's blo
 
 ---
 
+## 2026-10-25 — X6: one object, many rows
+
+- **Problem:** one CityObject can become several QGIS rows (per LoD via
+  `LodFeatureDecorator`, per face via `SemanticSurfaceFeatureDecorator`). Export only
+  collected uids, so it couldn't tell which LoD or how many faces were deleted.
+- `_count_rows()`: `{(uid, lod): n}`, `lod = None` when the layer has no `lod` field.
+  `get_surviving_ids()` now reads its uids from it.
+- **Rule 1 (LoD rows):** the object survives if any row survives; geometry entries whose
+  LoD was loaded but lost its row are dropped, before `process_geometry`. Skipped when
+  `lod_as="NONE"` (no `lod` field). LoD compared as `str()`, since the field is text and
+  CityJSON 1.0 stores numbers.
+- **Rule 2 (surface rows):** new `semantic_surfaces=False` flag; the layers don't show
+  whether surfaces were split into rows (no `surface.*` fields if the model has no
+  surface attributes), so the caller must say so. `_check_surface_rows()` compares rows
+  to faces in the original: all gone → dropped, none missing → kept, some missing →
+  `ValueError` naming the object. Runs before any copying.
+- Faces counted with `read_boundaries(boundaries, None, None)` (index-only), not
+  `get_polygons`: with the exporter's empty `VerticesCache`, `get_polygons` swallows the
+  `IndexError` and returns 0. `GeometryInstance` counted via its template. Expected is
+  at least 1, matching the loader's `len(polygons) > 1` split.
+- Objects without a `geometry` key no longer get `"geometry": []` added (fixed in the
+  X7b drop loop too).
+- **Known behaviour:** a parent whose row was deleted but whose child survives is kept,
+  with its loaded geometry dropped.
+- **Still open:** pass `semantic_surfaces` from the UI or Processing algorithm (X14, X15).
+- **Tests:** (a) delete house_a's LoD1 row → only LoD2 kept, house_b untouched;
+  (b) delete one surface row of building1 → raises; (c) delete all of building2's
+  surface rows → building2 dropped, building1 kept. Helpers `_delete_lod_row`,
+  `_delete_all_rows`.
+- 268 passed.
+
+
 ## 2026-10-24 — X7: fidelity test
 
 - `_cube_solid(first_vertex)` + `_fidelity_citymodel()`: building1 = LoD2 Solid with
