@@ -52,10 +52,10 @@ class CityJSONExporter:
             
             for obj in new_cm["CityObjects"].values(): # each object
                 kept=[]
-                for geom in obj.get("geometry", []): # each geometry of this object
+                for geom in obj.get("geometry", []): # each geometry of this object (g1,g2; g1 = {"type": "MultiSurface", "lod": "1", "boundaries": [...]},  # LoD1 cube)
                     if reader.has_lod([geom], self.loaded_lod): # is this the loaded lod?
                         kept.append(geom)
-                if "geometry" in obj:
+                if "geometry" in obj: # handles geometry less objects such as CityObjectGroup
                     obj["geometry"] = kept # replace with only the loaded-LoD geometries
 
         # drop geometry entries whose lod row was deleted in qgis; the object survives if any row survives
@@ -91,6 +91,7 @@ class CityJSONExporter:
         self.prune_dangling_children(new_cm, surviving_ids)
         return new_cm
 
+    # 
     def _count_rows(self): # _ at the start of function is python convention for this method is only used inside this class
         counts = {} # {(uid, lod): number of rows}.
         for layer in self.layers:
