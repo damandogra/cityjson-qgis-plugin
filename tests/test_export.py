@@ -173,6 +173,14 @@ def _delete_feature(layers, uid):
                 return
     raise AssertionError(f"{uid} not found in any layer")
 
+def _delete_lod_row(layers, uid, lod):
+    for layer in layers:
+        for f in layer.getFeatures():
+            if f["uid"] == uid and f["lod"] == lod:
+                layer.dataProvider().deleteFeatures([f.id()])
+                return
+    raise AssertionError(f"{uid} LoD {lod} not found in any layer")
+
 def _set_attribute(layers, uid, field_name, value):
     """Simulate the user editing one cell in QGIS."""
     for layer in layers:
@@ -516,3 +524,30 @@ def test_export_preserves_fidelity(qgis_app):
     assert lod2["material"]["default"]["value"] == 0
     # out["metadata"] == cm["metadata"]
     assert out["metadata"] == cm["metadata"]
+
+# x6
+def test_deleting_lod_row_drops_only_that_geometry(qgis_app):
+    """Deleting one LoD row drops only that geometry entry; the object survives."""
+    # 1. cm = the fixture (_unloaded_lod_citymodel)
+    cm = _unloaded_lod_citymodel()
+
+    # 2. loader with lod_as="ATTRIBUTES", then loader.load()
+    loader = CityJSONLoader(filepath="dummy", citymodel=cm, lod_as="ATTRIBUTES")
+    loader.load()
+
+    # 3. layers, then delete house_a's LoD "1" row
+    layers = loader.layer_manager.get_all_layers()
+    _delete_lod_row(layers, "house_a", "1")
+
+    # 4. out = export (default loaded_lod)
+    out = CityJSONExporter(layers, citymodel=cm).export()
+
+    # 5. asserts:
+    #    - house_a is in out
+    assert "house_a" in out["CityObjects"]
+    #    - house_a has 1 geometry
+    assert len(out["CityObjects"]["house_a"]["geometry"]) == 1
+    #    - that geometry's "lod" is "2"
+    assert out["CityObjects"]["house_a"]["geometry"][0]["lod"] == "2"
+    #    - house_b still has 2 geometries
+    assert len(out["CityObjects"]["house_b"]["geometry"]) == 2
