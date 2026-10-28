@@ -5,6 +5,73 @@ gets one entry at PR time). Keep entries short — what changed, why, what's blo
 
 ---
 
+## 2026-10-28 — X9: what QGIS editing does to CityJSON geometry
+
+**Setup**
+- Tile `10-284-560` (3D BAG v2025.09.03), loaded with the plugin: LoD 2.2,
+  no LoD field, no semantic surfaces, one layer. 12,204 faces.
+- Checked the unedited layer with `faces_from_layer`: identical to the file
+  (same 18 degenerate + 1 self-intersecting faces, **same face numbers**).
+  Confirms the plugin keeps faces in file order, which X12 depends on.
+- Test building: `NL.IMBAG.Pand.0503100000022502-0`, 15 faces, 70 corners,
+  worst deviation 0.33 mm, val3dity clean.
+- Each edit: snapshot → edit → snapshot → discard. Measured faces, corners,
+  worst deviation, broken faces, corners changed, split corners (copies of
+  one original corner that no longer agree).
+
+**Results**
+
+| # | Edit | How | Corners | Changed / split | Worst dev. | What broke | Tier |
+|---|---|---|---|---|---|---|---|
+| 1 | Move building 2D (Move Feature) | mouse | 70 → 70 | all / 0 | 0.33 mm | nothing | 1, clean |
+| 2 | Lift corner +0.5 m, wall copy | typed (Vertex Editor) | 70 → 70 | 1 / 1 | 0.33 mm | crack between faces; checker blind | 1, broken |
+| 2a | Lift corner +0.5 m, roof copy | typed (Vertex Editor) | 70 → 70 | 1 / 1 | 22.6 cm | roof non-planar + crack | 1, broken |
+| 2b | Drag corner ≈1 m sideways | mouse (Vertex Tool) | 70 → 70 | 1 / 1 | 3.1 cm | sloped face non-planar + crack | 1, broken |
+| 3 | Delete a vertex | mouse + Delete | 70 → 69 | – | 0.33 mm | face 14 quad → triangle; gap to neighbours; checker blind | 2 |
+| 4 | Reshape across an edge | mouse, 2D line | 70 → 76 | – | 6.4 m | new corners at z = 0; floor and roof both reshaped, walls not | 2 |
+| 5 | Add vertex on an edge | mouse, double-click | 70 → 71 | – | 0.33 mm | z interpolated correctly (0.7); wall above doesn't get the corner | 2 |
+
+**Findings**
+1. **Only moving a whole building is safe.** Every other edit broke the building.
+2. **A shared corner is several independent copies.** The plugin loads each face
+   as its own polygon in a flat `MultiPolygonZ`; a corner shared by 3 faces is
+   3 copies. Every vertex edit moved exactly 1 copy → a crack. Typed and mouse
+   edits behave the same, so this is structural, not a precision problem.
+3. **In 2D you can't choose the height you edit.** Copies at z 0.70, 7.20 and
+   9.11 sit on the same x, y spot; the Vertex Tool picked face 14 every time.
+4. **2D drawing tools invent heights.** Reshape puts new corners at the default
+   z (0) and interpolates toward it at the edge crossings (0.35, 4.55). Adding
+   a single vertex on an edge interpolates correctly.
+5. **Reshape and vertex tools hit every face under the cursor in 2D.** Floor
+   and roof overlap from above, so both changed while the walls did not.
+6. **Vertical walls hide z edits.** Lifting a wall corner keeps the wall
+   planar (its plane contains the up direction), so the checker sees nothing.
+7. **The per-face checker catches bent faces only.** Cracks, gaps and
+   mismatched topology are shell-level (val3dity 302-type) and invisible to it.
+
+**Consequence for X10–X13**
+- "Tier 1 = face and corner counts unchanged" is not enough: edits 2, 2a and
+  2b keep the counts and still break the building.
+- X10 needs a third outcome besides Tier 1 / Tier 2: **split vertex**
+  (copies of one original vertex index now disagree). X12's lockstep walk
+  already maps every QGIS corner back to its index, so this is cheap to detect.
+- Options: (A) refuse split vertices with a clear error; (B) propagate:
+  if all moved copies agree, move `vertices[index]` once, then run the
+  checker on that object and warn. Proposal: A first, B later.
+- Export must also round edited coordinates to the file's 1 mm grid (X11);
+  edit 1 produced `84801.98421033…`.
+
+**questions for Gina**
+- Refuse or propagate split vertices (A vs B)?
+- Is vertex-move editing still worth shipping, given that only a whole-object
+  move is safe in practice? Alternative: support whole-object moves only.
+
+**Limits of this experiment**
+- One building, one tile, one QGIS version, LoD 2.2 only.
+- Edit 2a's 22.6 cm was predicted by simulation and then measured identically.
+- No screenshots of the 3D view yet.
+
+
 ## 2026-10-28 — X9: geometry checker and 3D BAG baseline
 
 - `scripts/check_geometry.py`: flags non-planar, degenerate and self-intersecting
