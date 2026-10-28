@@ -75,7 +75,7 @@ gets one entry at PR time). Keep entries short — what changed, why, what's blo
 - To confirm with Gina.
 
 **Limits of this experiment**
-- One building, one tile, QGIS <version>, LoD 2.2 only.
+- One building, one tile, QGIS 3.44.13, LoD 2.2 only.
 - Edit 2a's 22.6 cm was predicted by simulation and then measured identically.
 - No screenshots of the 3D view yet.
 
