@@ -5,6 +5,26 @@ gets one entry at PR time). Keep entries short — what changed, why, what's blo
 
 ---
 
+## 2026-10-28 — X9: geometry checker and 3D BAG baseline
+
+- `scripts/check_geometry.py`: flags non-planar, degenerate and self-intersecting
+  faces in a CityJSON file. 30 tests in `tests/test_check_geometry.py`, no QGIS needed.
+- Planarity: Newell normal + centroid, max corner distance to the plane.
+  Default tolerance 1 cm = val3dity `planarity_d2p_tol` default; report also
+  counts at 1 mm and 5 cm. Known limit: one corner lifted by h shows as ≈ h/4.
+- Baseline, unedited 3D BAG tile `10-284-560` (23,156 faces):
+  - non-planar: 0 > 1 cm, 16 > 1 mm, worst 0.35 cm
+  - degenerate (repeated corner): 18 faces in 5 buildings
+  - self-intersecting (touching edges): 1 face in 1 building
+- Cross-checked against the tile's own `b3_val3dity_lod22`: every flagged face
+  is in a building val3dity also flags (102 / 104), no false alarms.
+  Missed: 2 buildings with 102 (val3dity likely snaps corners within 1 mm; the
+  checker uses exact equality), and shell-level 302/303 (out of scope, the
+  checker works per face).
+- **Clean at 1 cm**, so any non-planar face after a QGIS edit is caused by the edit.
+- Next: the experiment. Load this tile in QGIS, do the 4 edits, check each.
+
+
 ## 2026-10-25 — X6: one object, many rows
 
 - **Problem:** one CityObject can become several QGIS rows (per LoD via
