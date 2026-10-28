@@ -17,8 +17,9 @@ each face flows through it like this:
 PLANARITY_TOL = 0.01 # val3dity default: https://val3dity.readthedocs.io/main/usage/.
 
 # plain math
-def newell_normal(ring):
-    """you give in the ring of corners, it tells which way the face points"""
+
+def centroid(ring):
+    """Average corner of a ring."""
     n = len(ring)
     total_x = 0
     total_y = 0
@@ -27,9 +28,18 @@ def newell_normal(ring):
         total_x += p[0]
         total_y += p[1]
         total_z += p[2]
-
-    # A. centroid
     cx, cy, cz = total_x / n, total_y / n, total_z / n
+    return (cx, cy, cz)
+
+
+def newell_normal(ring):
+    """
+    you give in the ring of corners, it tells which way the face points
+    nx,ny,nz is the normal showing the direction of the fitted plane
+
+    """
+    # A. centroid
+    cx, cy, cz = centroid(ring)
 
     # B. shift every cornenr by minus the centroid
     shifted_ring = []
@@ -44,6 +54,7 @@ def newell_normal(ring):
     ny = 0
     nz = 0
 
+    n = len(shifted_ring)
     for p in range(n):
         next_corner = p + 1
         if next_corner == n:
@@ -59,8 +70,10 @@ def newell_normal(ring):
 
     return (nx, ny, nz)
 
+
 def planarity_deviation(face):
     """Face -> how far the worst corner sits off the plane"""
+
     return
 
 def is_degenerate(face):
