@@ -66,10 +66,20 @@ gets one entry at PR time). Keep entries short — what changed, why, what's blo
 - Is vertex-move editing still worth shipping, given that only a whole-object
   move is safe in practice? Alternative: support whole-object moves only.
 
+**Decision (28 Oct)**
+- Geometry is read-only: export detects any geometry edit made in QGIS and
+  refuses with a clear error (X10). Old X11–X13 (vertex-move editing) dropped.
+- Considered and dropped: refusing vs propagating split vertices (A/B), and
+  supporting whole-object moves (low value: 3D BAG footprints come from the
+  BAG register; would cost 1–2 days).
+- To confirm with Gina.
+
 **Limits of this experiment**
-- One building, one tile, one QGIS version, LoD 2.2 only.
+- One building, one tile, QGIS <version>, LoD 2.2 only.
 - Edit 2a's 22.6 cm was predicted by simulation and then measured identically.
 - No screenshots of the 3D view yet.
+
+
 
 
 ## 2026-10-28 — X9: geometry checker and 3D BAG baseline
